@@ -1,3 +1,5 @@
+# generator.py
+
 import random
 import os
 from datetime import date
@@ -16,12 +18,11 @@ def _relative_label(iso_dt: str) -> Optional[str]:
         return None
     try:
         d = date.fromisoformat(iso_dt[:10])
-    except Exception:
+    except:
         return None
 
     today = date.today()
     delta = (d - today).days
-
     if delta < -2:
         return None
     if delta == -2:
@@ -39,27 +40,15 @@ def _relative_label(iso_dt: str) -> Optional[str]:
     return f"{d.strftime('%B')} {d.day}"
 
 def generate_baity_prompt(location: str, bio: str = "") -> str:
-    """
-    Occasionally we prefix with 'As a {bio}, ...' then carry on
-    with a weather/news/location/generic caption.
-    """
     from data import load_captions
     reference_captions, _ = load_captions()
 
-    fallback = [
-        "Living my best life ✨",
-        "Ready for whatever comes next",
-        # …etc…
-    ]
     if not reference_captions:
-        return random.choice(fallback)
+        return random.choice(fallback_event_captions)
 
-    # 20% chance we mention the bio
     personal = f"As a {bio}, " if bio and random.random() < 0.2 else ""
-
     bias = random.uniform(-5, 5)
 
-    # optional city‑specific captions
     loc_caps = []
     path = os.path.join(os.path.dirname(__file__), "data", "location_captions.txt")
     if os.path.exists(path):
@@ -105,7 +94,6 @@ def generate_baity_prompt(location: str, bio: str = "") -> str:
         if gens:
             return personal + random.choice(random.sample(gens, min(len(gens), 10)))
 
-    # fallback to a generic reference caption
     cap = random.choice(random.sample(reference_captions, min(len(reference_captions), 15)))
     for ph, val in [
         ("{city_name}", location),
@@ -120,34 +108,9 @@ def generate_opinion_prompt(base_prompt: str, location: str) -> str:
     tpl = random.choice(opinion_caption_templates)
     return tpl.format(base_prompt=base_prompt, news_summary=head)
 
-def generate_event_prompt(base_prompt: str) -> str:
-    from data import US_CITIES
-    import time
-
-    start = time.time()
-    while time.time() - start < 5:
-        city = random.choice(US_CITIES)
-        ev = fetch_event(city)
-        lbl = _relative_label(ev.get("date", ""))
-        if ev.get("valid") and ev.get("artist") and lbl:
-            artist = ev["artist"]
-            venue = ev.get("venue", "")
-            city_n = ev.get("city", city)
-            if venue:
-                tpl = random.choice(event_caption_templates)
-                return tpl.format(
-                    base_prompt=base_prompt,
-                    artist=artist,
-                    venue=venue,
-                    city=city_n,
-                    date=lbl,
-                    event=ev.get("event", artist)
-                )
-            return f"{base_prompt}\n\n{artist} in {city_n} {lbl}"
-
-    return generate_baity_prompt(location)
-
-def generate_event_prompt_with_location(base_prompt: str, location: str) -> str:
+def generate_event_prompt_with_location(
+    base_prompt: str, location: str, bio: str = ""
+) -> str:
     ev = fetch_event(location)
     lbl = _relative_label(ev.get("date", ""))
     if ev.get("valid") and ev.get("artist") and lbl:
@@ -166,4 +129,5 @@ def generate_event_prompt_with_location(base_prompt: str, location: str) -> str:
             )
         return f"{base_prompt}\n\n{artist} in {city_n} {lbl}"
 
-    return generate_baity_prompt(location)
+    # fallback to baity if no event
+    return generate_baity_prompt(location, bio)
